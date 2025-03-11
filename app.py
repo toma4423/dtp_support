@@ -233,13 +233,18 @@ def format_name(surname, given_name, target_length, alignment, spacing_char=""):
     alignment : str
         揃え方（"中央揃え", "左揃え", "右揃え"）
     spacing_char : str
-        文字間に挿入する文字
+        文字間に挿入する文字（"空ける"オプションの場合は全角スペース）
     
     Returns:
     --------
     str
         整形された氏名
     """
+    # 7字取りの特別ルールを適用
+    if target_length == 7 and spacing_char == "　":
+        return format_name_7chars_rule(surname, given_name)
+    
+    # 通常の整形処理
     # 苗字と名前の間にスペースを入れる
     full_name = surname + spacing_char + given_name
     
@@ -268,6 +273,87 @@ def format_name(surname, given_name, target_length, alignment, spacing_char=""):
         formatted_name = full_name[:target_length]
     
     return formatted_name
+
+def format_name_7chars_rule(surname, given_name):
+    """
+    7字取りルールに従って氏名を整形する関数
+    
+    Parameters:
+    -----------
+    surname : str
+        苗字
+    given_name : str
+        名前
+    
+    Returns:
+    --------
+    str
+        整形された氏名
+    """
+    surname_len = len(surname)
+    given_name_len = len(given_name)
+    
+    # 名前が6文字以上の場合はスペースなし
+    if given_name_len >= 6:
+        return surname + given_name
+    
+    # 名前が5文字の場合
+    if given_name_len == 5:
+        if surname_len == 1:
+            return f"{surname}　{given_name}"
+        else:  # 苗字が2文字以上の場合はスペースなし
+            return surname + given_name
+    
+    # 名前が4文字の場合
+    if given_name_len == 4:
+        if surname_len == 1:
+            return f"{surname}　　{given_name}"
+        elif surname_len == 2:
+            return f"{surname}　{given_name}"
+        else:  # 苗字が3文字以上の場合はスペースなし
+            return surname + given_name
+    
+    # 名前が3文字の場合
+    if given_name_len == 3:
+        if surname_len == 1:
+            return f"{surname}　　　{given_name}"
+        elif surname_len == 2:
+            return f"{surname}　{given_name}"
+        elif surname_len == 3:
+            return f"{surname}　{given_name}"
+        else:  # 苗字が4文字以上の場合はスペースなし
+            return surname + given_name
+    
+    # 名前が2文字の場合
+    if given_name_len == 2:
+        if surname_len == 1:
+            return f"{surname}　　　{given_name[0]}　{given_name[1]}"
+        elif surname_len == 2:
+            return f"{surname[0]}　{surname[1]}　{given_name[0]}　{given_name[1]}"
+        elif surname_len == 3:
+            return f"{surname}　{given_name[0]}　{given_name[1]}"
+        elif surname_len == 4:
+            return f"{surname}　{given_name}"
+        else:  # 苗字が5文字以上の場合はスペースなし
+            return surname + given_name
+    
+    # 名前が1文字の場合
+    if given_name_len == 1:
+        if surname_len == 1:
+            return f"{surname}　　　　　{given_name}"
+        elif surname_len == 2:
+            return f"{surname[0]}　{surname[1]}　　　{given_name}"
+        elif surname_len == 3:
+            return f"{surname}　　　{given_name}"
+        elif surname_len == 4:
+            return f"{surname}　　{given_name}"
+        elif surname_len == 5:
+            return f"{surname}　{given_name}"
+        else:  # 苗字が6文字以上の場合はスペースなし
+            return surname + given_name
+    
+    # 上記のルールに当てはまらない場合は単純に連結
+    return surname + given_name
 
 def load_surname_list(file):
     """
