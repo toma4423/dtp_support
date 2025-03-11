@@ -199,7 +199,7 @@ def process_name_list(df, surname_list, char_count_option, alignment_option, spa
         # 文字間の調整
         spacing_char = ""
         if spacing_option == "空ける":
-            spacing_char = " "
+            spacing_char = "　"  # 全角スペースに変更
         elif spacing_option == "詰める":
             spacing_char = ""  # 通常より詰める場合は特殊な処理が必要かもしれません
         

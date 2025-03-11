@@ -71,11 +71,11 @@ class TestDTPNameFormatter(unittest.TestCase):
         """
         文字間設定のテスト
         """
-        result = format_name('佐藤', '太郎', 7, '中央揃え', ' ')
-        self.assertEqual(result.strip(), '佐藤 太郎')
+        result = format_name('佐藤', '太郎', 7, '中央揃え', '　')
+        self.assertEqual(result.strip(), '佐藤　太郎')
         
-        result = format_name('鈴', '一', 5, '中央揃え', ' ')
-        self.assertEqual(result.strip(), '鈴 一')
+        result = format_name('鈴', '一', 5, '中央揃え', '　')
+        self.assertEqual(result.strip(), '鈴　一')
     
     def test_process_name_list(self):
         """
