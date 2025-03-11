@@ -6,8 +6,13 @@
 
 import pandas as pd
 import unittest
-from app import format_name, process_name_list
+from app import format_name, process_name_list, format_name_5chars_rule, format_name_7chars_rule, load_surname_list
 import io
+import tempfile
+import os
+import sys
+from contextlib import redirect_stdout
+from unittest.mock import patch, MagicMock
 
 class TestDTPNameFormatter(unittest.TestCase):
     """
@@ -31,11 +36,17 @@ class TestDTPNameFormatter(unittest.TestCase):
         """
         5字取り・中央揃えのテスト
         """
+        # 通常の名前のケース
         result = format_name('佐藤', '太郎', 5, '中央揃え')
         self.assertEqual(result.rstrip(), '佐藤太郎')
         
+        # 短い名前のケース
         result = format_name('鈴', '一', 5, '中央揃え')
         self.assertEqual(result.rstrip(), ' 鈴一')
+        
+        # スペースありの場合
+        result = format_name('鈴', '一', 5, '中央揃え', '　')
+        self.assertEqual(result, '鈴　　　一')
     
     def test_format_name_5_chars_left(self):
         """
@@ -144,16 +155,22 @@ class TestDTPNameFormatter(unittest.TestCase):
         """
         文字間設定のテスト
         """
-        # 通常の文字間設定（7字取りルール以外）のテスト
-        # 左揃えの場合、全角スペースが入る
-        result = format_name('佐藤', '太郎', 7, '左揃え', '　')
-        # 実際の出力に合わせて期待値を修正
-        self.assertEqual(result.strip(), '佐　藤　太　郎')
+        # 通常のスペースなしのケース
+        result = format_name('鈴木', '一郎', 10, '中央揃え')
+        self.assertEqual(result.strip(), '鈴木一郎')
         
-        # 5字取りの場合は7字取りルールが適用されない
-        result = format_name('鈴', '一', 5, '左揃え', '　')
-        # 実際の出力に合わせて期待値を修正
-        self.assertEqual(result.strip(), '鈴　一')
+        # 空けるオプション（文字間に全角スペース）のケース
+        # 5字取りルールが適用される場合
+        result = format_name('鈴', '一', 5, '中央揃え', '　')
+        self.assertEqual(result, '鈴　　　一')
+        
+        # 7字取りルールが適用される場合
+        result = format_name('鈴', '一', 7, '中央揃え', '　')
+        self.assertEqual(result, '鈴　　　　　一')
+        
+        # 詰めるオプションのケース
+        result = format_name('鈴木', '一郎', 10, '中央揃え', '')
+        self.assertEqual(result.strip(), '鈴木一郎')
     
     def test_process_name_list(self):
         """
@@ -210,6 +227,46 @@ class TestDTPNameFormatter(unittest.TestCase):
         finally:
             # 元のstオブジェクトを復元
             app.st = original_st
+
+    def test_format_name_5_chars_rule(self):
+        """
+        5字取りルールのテスト
+        """
+        # 名前が1文字の場合
+        result = format_name('山', '太', 5, '中央揃え', '　')
+        self.assertEqual(result, '山　　　太')
+        
+        result = format_name('伊藤', '太', 5, '中央揃え', '　')
+        self.assertEqual(result, '伊藤　　太')
+        
+        result = format_name('高橋', '太', 5, '中央揃え', '　')
+        self.assertEqual(result, '高橋　　太')
+        
+        # 名前が2文字の場合
+        result = format_name('山', '太郎', 5, '中央揃え', '　')
+        self.assertEqual(result, '山　　太郎')
+        
+        result = format_name('伊藤', '太郎', 5, '中央揃え', '　')
+        self.assertEqual(result, '伊藤　太郎')
+        
+        # 名前が3文字の場合 - 特殊ケース
+        result = format_name('伊藤', 'さくら', 5, '中央揃え', '　')
+        self.assertEqual(result, '伊藤　さくら')
+        
+        result = format_name('中村', '真由美', 5, '中央揃え', '　')
+        self.assertEqual(result, '中村　真由美')
+        
+        # 苗字が3文字、名前が3文字の場合（苗字の最初の1文字のみ使用）
+        result = format_name_5chars_rule('高橋', '一二三')
+        self.assertEqual(result, '高　一二三')
+        
+        # 名前が4文字以上の場合
+        result = format_name('山', '太郎丸', 5, '中央揃え', '　')
+        self.assertEqual(result, '山太郎丸')
+        
+        # 苗字が4文字以上の場合
+        result = format_name('長谷川', '太', 5, '中央揃え', '　')
+        self.assertEqual(result, '長谷川太')
 
 if __name__ == '__main__':
     unittest.main() 

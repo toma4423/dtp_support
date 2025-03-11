@@ -1,7 +1,7 @@
 """
 日本語DTP名寄せツール
 
-このアプリケーションは、名簿リスト（CSV, Excel）に含まれる日本語氏名を、
+このアプリケーションは、名簿リスト（CSV, Excel, テキスト）に含まれる日本語氏名を、
 指定された文字数（5字または7字）で整形し、DTP処理に適した形式で出力します。
 """
 
@@ -14,6 +14,10 @@ import re
 from io import BytesIO
 import base64
 import time
+
+# 自作モジュールのインポート
+from pattern5 import format_name_5chars_rule
+from pattern7 import format_name_7chars_rule
 
 # アプリケーションのタイトルとスタイル設定
 st.set_page_config(
@@ -73,29 +77,13 @@ with st.sidebar:
         index=0
     )
     
-    # 字取り方法
-    st.subheader("字取り方法")
-    alignment = st.radio(
-        "揃え方を選択してください:",
-        ["中央揃え", "左揃え", "右揃え"],
-        index=0
-    )
-    
-    # 文字間設定
-    st.subheader("文字間設定")
-    spacing = st.radio(
-        "文字間を選択してください:",
-        ["通常", "空ける", "詰める"],
-        index=0
-    )
-    
     # ヘルプ情報
     st.subheader("ヘルプ")
     with st.expander("使い方"):
         st.write("""
-        1. 名簿リスト（CSVまたはExcel）をアップロードします。
+        1. 名簿リスト（CSV、Excel、またはテキスト）をアップロードします。
         2. 苗字リスト（テキストファイル）をアップロードします。
-        3. サイドバーで文字数整形オプションを選択します。
+        3. サイドバーで文字数整形オプション（5字取りまたは7字取り）を選択します。
         4. 「処理実行」ボタンをクリックします。
         5. 処理結果をダウンロードします。
         """)
@@ -103,12 +91,14 @@ with st.sidebar:
     with st.expander("注意事項"):
         st.write("""
         - アップロード可能なファイルサイズは10MBまでです。
-        - 名簿リストには氏名列が必要です。
+        - 名簿リスト：
+          - CSVまたはExcelの場合は氏名列が必要です。
+          - テキストファイルの場合は1行に1つの氏名を記載してください。
         - 苗字リストは1行に1つの苗字が記載されたテキストファイルです。
         """)
 
 # メイン処理関数
-def process_name_list(df, surname_list, char_count_option, alignment_option, spacing_option):
+def process_name_list(df, surname_list, char_count_option):
     """
     名簿リストの処理を行う関数
     
@@ -120,10 +110,6 @@ def process_name_list(df, surname_list, char_count_option, alignment_option, spa
         苗字リスト
     char_count_option : str
         文字数整形オプション（"5字取り" or "7字取り"）
-    alignment_option : str
-        揃え方オプション（"中央揃え", "左揃え", "右揃え"）
-    spacing_option : str
-        文字間設定（"通常", "空ける", "詰める"）
     
     Returns:
     --------
@@ -181,12 +167,12 @@ def process_name_list(df, surname_list, char_count_option, alignment_option, spa
             errors.append(f"行 {i+1}: 氏名が空です。")
             continue
         
-        # 苗字と名前の分割
+        # 苗字と名前の分割（リストの順序を考慮して1行目から検索）
         surname = None
-        for length in range(min(3, len(full_name)), 0, -1):
-            if full_name[:length] in surname_set:
-                surname = full_name[:length]
-                given_name = full_name[length:]
+        for potential_surname in surname_list:
+            if full_name.startswith(potential_surname):
+                surname = potential_surname
+                given_name = full_name[len(potential_surname):]
                 break
         
         if surname is None:
@@ -196,15 +182,8 @@ def process_name_list(df, surname_list, char_count_option, alignment_option, spa
             given_name = full_name[mid:]
             errors.append(f"行 {i+1}: 「{full_name}」の苗字がリストにありません。自動分割しました: {surname} {given_name}")
         
-        # 文字間の調整
-        spacing_char = ""
-        if spacing_option == "空ける":
-            spacing_char = "　"  # 全角スペースに変更
-        elif spacing_option == "詰める":
-            spacing_char = ""  # 通常より詰める場合は特殊な処理が必要かもしれません
-        
         # 整形処理
-        formatted_name = format_name(surname, given_name, target_length, alignment_option, spacing_char)
+        formatted_name = format_name(surname, given_name, target_length)
         
         # 結果の格納
         df.at[index, result_column] = formatted_name
@@ -218,9 +197,9 @@ def process_name_list(df, surname_list, char_count_option, alignment_option, spa
     
     return df, errors
 
-def format_name(surname, given_name, target_length, alignment, spacing_char=""):
+def format_name(surname, given_name, target_length):
     """
-    氏名を指定された文字数と揃え方で整形する関数
+    氏名を指定された文字数でルールに従って整形する関数
     
     Parameters:
     -----------
@@ -229,131 +208,18 @@ def format_name(surname, given_name, target_length, alignment, spacing_char=""):
     given_name : str
         名前
     target_length : int
-        目標の文字数
-    alignment : str
-        揃え方（"中央揃え", "左揃え", "右揃え"）
-    spacing_char : str
-        文字間に挿入する文字（"空ける"オプションの場合は全角スペース）
+        目標の文字数（5または7）
     
     Returns:
     --------
     str
         整形された氏名
     """
-    # 7字取りの特別ルールを適用
-    if target_length == 7 and spacing_char == "　":
+    # 5字取りか7字取りのルールを適用
+    if target_length == 5:
+        return format_name_5chars_rule(surname, given_name)
+    else:  # target_length == 7
         return format_name_7chars_rule(surname, given_name)
-    
-    # 通常の整形処理
-    # 苗字と名前の間にスペースを入れる
-    full_name = surname + spacing_char + given_name
-    
-    # 現在の文字数
-    current_length = len(full_name)
-    
-    # 文字数が目標より少ない場合、空白を追加
-    if current_length < target_length:
-        padding = target_length - current_length
-        
-        if alignment == "中央揃え":
-            left_padding = padding // 2
-            right_padding = padding - left_padding
-            formatted_name = " " * left_padding + full_name + " " * right_padding
-        elif alignment == "左揃え":
-            formatted_name = full_name + " " * padding
-        else:  # "右揃え"
-            formatted_name = " " * padding + full_name
-    
-    # 文字数が目標と同じ場合、そのまま返す
-    elif current_length == target_length:
-        formatted_name = full_name
-    
-    # 文字数が目標より多い場合、切り詰める（警告を出すべき）
-    else:
-        formatted_name = full_name[:target_length]
-    
-    return formatted_name
-
-def format_name_7chars_rule(surname, given_name):
-    """
-    7字取りルールに従って氏名を整形する関数
-    
-    Parameters:
-    -----------
-    surname : str
-        苗字
-    given_name : str
-        名前
-    
-    Returns:
-    --------
-    str
-        整形された氏名
-    """
-    surname_len = len(surname)
-    given_name_len = len(given_name)
-    
-    # 名前が6文字以上の場合はスペースなし
-    if given_name_len >= 6:
-        return surname + given_name
-    
-    # 名前が5文字の場合
-    if given_name_len == 5:
-        if surname_len == 1:
-            return f"{surname}　{given_name}"
-        else:  # 苗字が2文字以上の場合はスペースなし
-            return surname + given_name
-    
-    # 名前が4文字の場合
-    if given_name_len == 4:
-        if surname_len == 1:
-            return f"{surname}　　{given_name}"
-        elif surname_len == 2:
-            return f"{surname}　{given_name}"
-        else:  # 苗字が3文字以上の場合はスペースなし
-            return surname + given_name
-    
-    # 名前が3文字の場合
-    if given_name_len == 3:
-        if surname_len == 1:
-            return f"{surname}　　　{given_name}"
-        elif surname_len == 2:
-            return f"{surname}　{given_name}"
-        elif surname_len == 3:
-            return f"{surname}　{given_name}"
-        else:  # 苗字が4文字以上の場合はスペースなし
-            return surname + given_name
-    
-    # 名前が2文字の場合
-    if given_name_len == 2:
-        if surname_len == 1:
-            return f"{surname}　　　{given_name[0]}　{given_name[1]}"
-        elif surname_len == 2:
-            return f"{surname[0]}　{surname[1]}　{given_name[0]}　{given_name[1]}"
-        elif surname_len == 3:
-            return f"{surname}　{given_name[0]}　{given_name[1]}"
-        elif surname_len == 4:
-            return f"{surname}　{given_name}"
-        else:  # 苗字が5文字以上の場合はスペースなし
-            return surname + given_name
-    
-    # 名前が1文字の場合
-    if given_name_len == 1:
-        if surname_len == 1:
-            return f"{surname}　　　　　{given_name}"
-        elif surname_len == 2:
-            return f"{surname[0]}　{surname[1]}　　　{given_name}"
-        elif surname_len == 3:
-            return f"{surname}　　　{given_name}"
-        elif surname_len == 4:
-            return f"{surname}　　{given_name}"
-        elif surname_len == 5:
-            return f"{surname}　{given_name}"
-        else:  # 苗字が6文字以上の場合はスペースなし
-            return surname + given_name
-    
-    # 上記のルールに当てはまらない場合は単純に連結
-    return surname + given_name
 
 def load_surname_list(file):
     """
@@ -408,7 +274,7 @@ def get_download_link(df, file_format, filename):
 st.markdown("<h2 class='sub-header'>ファイルアップロード</h2>", unsafe_allow_html=True)
 
 # 名簿リストのアップロード
-uploaded_file = st.file_uploader("名簿リスト（CSVまたはExcel）をアップロードしてください", type=["csv", "xlsx"])
+uploaded_file = st.file_uploader("名簿リスト（CSV、Excel、またはテキスト）をアップロードしてください", type=["csv", "xlsx", "txt"])
 
 # 苗字リストのアップロード
 surname_file = st.file_uploader("苗字リスト（テキストファイル）をアップロードしてください", type=["txt"])
@@ -426,9 +292,17 @@ if uploaded_file is not None and surname_file is not None:
             if file_extension == 'csv':
                 df = pd.read_csv(uploaded_file, encoding='utf-8-sig')
                 file_format = "csv"
-            else:  # xlsx
+            elif file_extension == 'xlsx':
                 df = pd.read_excel(uploaded_file)
                 file_format = "excel"
+            else:  # txt
+                # テキストファイルを読み込む
+                content = uploaded_file.read().decode('utf-8')
+                lines = [line.strip() for line in content.split('\n') if line.strip()]
+                
+                # 各行を氏名として扱い、DataFrameに変換
+                df = pd.DataFrame({'氏名': lines})
+                file_format = "csv"  # 出力形式はCSVとする
             
             # 苗字リストの読み込み
             surname_list = load_surname_list(surname_file)
@@ -438,9 +312,7 @@ if uploaded_file is not None and surname_file is not None:
                 result_df, errors = process_name_list(
                     df, 
                     surname_list, 
-                    char_count, 
-                    alignment, 
-                    spacing
+                    char_count
                 )
             
             # エラーメッセージの表示
