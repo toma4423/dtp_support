@@ -141,13 +141,13 @@ def process_name_list(names, surname_list, char_count_option):
     list
         処理後の名前リスト
     list
-        処理されなかった名前のリスト
+        処理されなかった名前のリスト（行番号付き）
     """
     # 進捗バーの初期化
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    # 処理されなかった名前のリスト
+    # 処理されなかった名前のリスト（行番号付き）
     skipped_names = []
 
     # 整形された名前を格納するリスト
@@ -180,8 +180,10 @@ def process_name_list(names, surname_list, char_count_option):
                 break
 
         if surname is None:
-            # 苗字が見つからない場合は処理しない
-            skipped_names.append(full_name)
+            # 苗字が見つからない場合は行番号と共に記録
+            skipped_names.append((i + 1, full_name))
+            # 元のデータをそのまま出力に加える
+            formatted_names.append(full_name)
             continue  # 次の名前に進む
 
         # 整形処理
@@ -277,9 +279,12 @@ if name_input and surname_file is not None:
 
             # 処理されなかった名前の表示
             if skipped_names:
-                skipped_text = "\n".join(skipped_names)
+                # 処理できなかった名前の行番号と名前を「n行目：名前」の形式で表示
+                skipped_info = ", ".join([f"{i}行目：{name}" for i, name in skipped_names])
                 st.markdown("<h3>処理されなかった名前</h3>", unsafe_allow_html=True)
-                st.text_area("処理されなかった名前:", value=skipped_text, height=100)
+                st.markdown("<div class='error-box'>", unsafe_allow_html=True)
+                st.write(skipped_info)
+                st.markdown("</div>", unsafe_allow_html=True)
 
         except Exception as e:
             st.error(f"エラーが発生しました: {str(e)}")
