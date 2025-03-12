@@ -1,23 +1,47 @@
 """
 日本語DTP名寄せツール
 
-このアプリケーションは、名簿リスト（CSV, Excel, テキスト）に含まれる日本語氏名を、
+このアプリケーションは、テキストフィールドに入力された日本語氏名を、
 指定された文字数（5字または7字）で整形し、DTP処理に適した形式で出力します。
 """
 
 import streamlit as st
 import pandas as pd
 import numpy as np
-import os
-import tempfile
 import re
-from io import BytesIO
-import base64
 import time
 
 # 自作モジュールのインポート
 from pattern5 import format_name_5chars_rule
 from pattern7 import format_name_7chars_rule
+
+# サンプルデータ
+SAMPLE_NAMES = """佐藤太郎
+鈴木花子
+高橋一郎
+田中美咲
+渡辺健太
+伊藤さくら
+山本雄大
+中村真由美
+小林誠
+加藤裕子"""
+
+SAMPLE_SURNAMES = """佐藤
+鈴木
+高橋
+田中
+渡辺
+伊藤
+山本
+中村
+小林
+加藤
+吉田
+山田
+佐々木
+山口
+松本"""
 
 # アプリケーションのタイトルとスタイル設定
 st.set_page_config(
@@ -27,7 +51,8 @@ st.set_page_config(
 )
 
 # CSSスタイルの追加
-st.markdown("""
+st.markdown(
+    """
 <style>
     .main-header {
         font-size: 2.5rem;
@@ -59,148 +84,149 @@ st.markdown("""
         border-radius: 0.5rem;
         margin-bottom: 1rem;
     }
+    .result-area {
+        background-color: #F3F4F6;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        font-family: monospace;
+        white-space: pre;
+        margin-top: 1rem;
+    }
+    .button-container {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # メインヘッダー
-st.markdown("<h1 class='main-header'>日本語DTP名寄せツール</h1>", unsafe_allow_html=True)
+st.markdown(
+    "<h1 class='main-header'>日本語DTP名寄せツール</h1>", unsafe_allow_html=True
+)
 
 # サイドバーの設定
 with st.sidebar:
     st.header("設定")
-    
+
     # 文字数整形オプション
     st.subheader("文字数整形オプション")
-    char_count = st.radio(
-        "文字数を選択してください:",
-        ["5字取り", "7字取り"],
-        index=0
-    )
-    
+    char_count = st.radio("文字数を選択してください:", ["5字取り", "7字取り"], index=0)
+
     # ヘルプ情報
     st.subheader("ヘルプ")
     with st.expander("使い方"):
-        st.write("""
-        1. 名簿リスト（CSV、Excel、またはテキスト）をアップロードします。
-        2. 苗字リスト（テキストファイル）をアップロードします。
+        st.write(
+            """
+        1. テキストフィールドに変換したい氏名を入力します（一行に一つの氏名）。
+        2. 苗字リストをテキストフィールドに入力します（一行に一つの苗字）。
         3. サイドバーで文字数整形オプション（5字取りまたは7字取り）を選択します。
         4. 「処理実行」ボタンをクリックします。
-        5. 処理結果をダウンロードします。
-        """)
-    
+        5. 処理結果が下部のテキストエリアに表示されます。
+        """
+        )
+
     with st.expander("注意事項"):
-        st.write("""
-        - アップロード可能なファイルサイズは10MBまでです。
-        - 名簿リスト：
-          - CSVまたはExcelの場合は氏名列が必要です。
-          - テキストファイルの場合は1行に1つの氏名を記載してください。
-        - 苗字リストは1行に1つの苗字が記載されたテキストファイルです。
-        """)
+        st.write(
+            """
+        - 氏名と苗字は一行に一つずつ入力してください。
+        - 空白行は処理されません。
+        - 苗字リストに存在しない氏名は、自動的に半分で分割されます。
+        """
+        )
+
 
 # メイン処理関数
-def process_name_list(df, surname_list, char_count_option):
+def process_name_list(names, surname_list, char_count_option):
     """
-    名簿リストの処理を行う関数
-    
+    名前リストの処理を行う関数
+
     Parameters:
     -----------
-    df : pandas.DataFrame
-        処理対象の名簿データフレーム
+    names : list
+        処理対象の名前リスト
     surname_list : list
         苗字リスト
     char_count_option : str
         文字数整形オプション（"5字取り" or "7字取り"）
-    
+
     Returns:
     --------
-    pandas.DataFrame
-        処理後のデータフレーム
+    list
+        処理後の名前リスト
     list
         エラーメッセージのリスト
     """
     # 進捗バーの初期化
     progress_bar = st.progress(0)
     status_text = st.empty()
-    
+
     # エラーメッセージを格納するリスト
     errors = []
-    
-    # 氏名列の特定
-    name_columns = []
-    for col in df.columns:
-        if '氏名' in col or '名前' in col or '姓名' in col or 'name' in col.lower():
-            name_columns.append(col)
-    
-    if not name_columns:
-        errors.append("氏名列が見つかりませんでした。列名に「氏名」「名前」「姓名」「name」のいずれかを含む列が必要です。")
-        return df, errors
-    
-    # 最初の氏名列を使用
-    name_column = name_columns[0]
-    status_text.text(f"氏名列として「{name_column}」を使用します。")
-    
+
+    # 整形された名前を格納するリスト
+    formatted_names = []
+
     # 文字数の設定
     if char_count_option == "5字取り":
         target_length = 5
     else:  # "7字取り"
         target_length = 7
-    
-    # 結果列の追加
-    result_column = f"{name_column}_整形済み"
-    df[result_column] = ""
-    
+
     # 苗字リストをセットに変換して検索を高速化
     surname_set = set(surname_list)
-    
+
     # 各行の処理
-    total_rows = len(df)
-    for i, (index, row) in enumerate(df.iterrows()):
+    total_names = len(names)
+    for i, full_name in enumerate(names):
         # 進捗状況の更新
-        progress = (i + 1) / total_rows
+        progress = (i + 1) / total_names
         progress_bar.progress(progress)
-        status_text.text(f"処理中... {i+1}/{total_rows} 行 ({progress:.1%})")
-        
-        # 氏名の取得
-        full_name = str(row[name_column]).strip()
-        
-        if pd.isna(full_name) or full_name == "":
-            errors.append(f"行 {i+1}: 氏名が空です。")
-            continue
-        
-        # 苗字と名前の分割（リストの順序を考慮して1行目から検索）
+        status_text.text(f"処理中... {i+1}/{total_names} 行 ({progress:.1%})")
+
+        full_name = full_name.strip()
+        if not full_name:
+            continue  # 空白行はスキップ
+
+        # 苗字と名前の分割（リストの順序を考慮して検索）
         surname = None
         for potential_surname in surname_list:
             if full_name.startswith(potential_surname):
                 surname = potential_surname
-                given_name = full_name[len(potential_surname):]
+                given_name = full_name[len(potential_surname) :]
                 break
-        
+
         if surname is None:
             # 苗字が見つからない場合、単純に半分で分割
             mid = len(full_name) // 2
             surname = full_name[:mid]
             given_name = full_name[mid:]
-            errors.append(f"行 {i+1}: 「{full_name}」の苗字がリストにありません。自動分割しました: {surname} {given_name}")
-        
+            errors.append(
+                f"行 {i+1}: 「{full_name}」の苗字がリストにありません。自動分割しました: {surname} {given_name}"
+            )
+
         # 整形処理
         formatted_name = format_name(surname, given_name, target_length)
-        
+
         # 結果の格納
-        df.at[index, result_column] = formatted_name
-        
+        formatted_names.append(formatted_name)
+
         # 処理の遅延をシミュレート（実際の処理では削除可能）
         time.sleep(0.01)
-    
+
     # 進捗バーを完了状態に
     progress_bar.progress(1.0)
     status_text.text("処理完了！")
-    
-    return df, errors
+
+    return formatted_names, errors
+
 
 def format_name(surname, given_name, target_length):
     """
     氏名を指定された文字数でルールに従って整形する関数
-    
+
     Parameters:
     -----------
     surname : str
@@ -209,7 +235,7 @@ def format_name(surname, given_name, target_length):
         名前
     target_length : int
         目標の文字数（5または7）
-    
+
     Returns:
     --------
     str
@@ -221,100 +247,55 @@ def format_name(surname, given_name, target_length):
     else:  # target_length == 7
         return format_name_7chars_rule(surname, given_name)
 
-def load_surname_list(file):
-    """
-    苗字リストを読み込む関数
-    
-    Parameters:
-    -----------
-    file : UploadedFile
-        アップロードされた苗字リストファイル
-    
-    Returns:
-    --------
-    list
-        苗字のリスト
-    """
-    content = file.read().decode('utf-8')
-    surnames = [line.strip() for line in content.split('\n') if line.strip()]
-    return surnames
-
-def get_download_link(df, file_format, filename):
-    """
-    ダウンロードリンクを生成する関数
-    
-    Parameters:
-    -----------
-    df : pandas.DataFrame
-        ダウンロード対象のデータフレーム
-    file_format : str
-        ファイル形式（"csv" or "excel"）
-    filename : str
-        ダウンロードファイル名
-    
-    Returns:
-    --------
-    str
-        ダウンロードリンクのHTML
-    """
-    if file_format == "csv":
-        csv = df.to_csv(index=False, encoding='utf-8-sig')
-        b64 = base64.b64encode(csv.encode()).decode()
-        href = f'<a href="data:file/csv;base64,{b64}" download="{filename}.csv">ダウンロード（CSV）</a>'
-    else:  # excel
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Sheet1')
-        b64 = base64.b64encode(output.getvalue()).decode()
-        href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="{filename}.xlsx">ダウンロード（Excel）</a>'
-    
-    return href
 
 # メイン処理部分
-st.markdown("<h2 class='sub-header'>ファイルアップロード</h2>", unsafe_allow_html=True)
+st.markdown("<h2 class='sub-header'>名前入力</h2>", unsafe_allow_html=True)
 
-# 名簿リストのアップロード
-uploaded_file = st.file_uploader("名簿リスト（CSV、Excel、またはテキスト）をアップロードしてください", type=["csv", "xlsx", "txt"])
+# サンプルデータ使用ボタン
+st.markdown("<div class='button-container'>", unsafe_allow_html=True)
+col1, col2, col3 = st.columns([1, 1, 3])
+with col1:
+    use_sample_names = st.button("サンプル氏名を使用", key="sample_names")
+with col2:
+    use_sample_surnames = st.button("サンプル苗字を使用", key="sample_surnames")
+st.markdown("</div>", unsafe_allow_html=True)
 
-# 苗字リストのアップロード
-surname_file = st.file_uploader("苗字リスト（テキストファイル）をアップロードしてください", type=["txt"])
+# 名前リストのテキストエリア
+name_input = st.text_area(
+    "変換したい氏名を入力してください（一行に一つ）:",
+    value=SAMPLE_NAMES if use_sample_names else "",
+    height=200,
+    help="一行に一つの氏名を入力してください。",
+    key="name_input",
+)
+
+# 苗字リストのテキストエリア
+surname_input = st.text_area(
+    "苗字リストを入力してください（一行に一つ）:",
+    value=SAMPLE_SURNAMES if use_sample_surnames else "",
+    height=200,
+    help="一行に一つの苗字を入力してください。",
+    key="surname_input",
+)
 
 # 処理実行ボタン
-if uploaded_file is not None and surname_file is not None:
+if name_input and surname_input:
     st.markdown("<h2 class='sub-header'>処理実行</h2>", unsafe_allow_html=True)
-    
+
     if st.button("処理実行", key="process_button"):
         try:
-            # ファイル形式の判定
-            file_extension = uploaded_file.name.split('.')[-1].lower()
-            
-            # データフレームの読み込み
-            if file_extension == 'csv':
-                df = pd.read_csv(uploaded_file, encoding='utf-8-sig')
-                file_format = "csv"
-            elif file_extension == 'xlsx':
-                df = pd.read_excel(uploaded_file)
-                file_format = "excel"
-            else:  # txt
-                # テキストファイルを読み込む
-                content = uploaded_file.read().decode('utf-8')
-                lines = [line.strip() for line in content.split('\n') if line.strip()]
-                
-                # 各行を氏名として扱い、DataFrameに変換
-                df = pd.DataFrame({'氏名': lines})
-                file_format = "csv"  # 出力形式はCSVとする
-            
-            # 苗字リストの読み込み
-            surname_list = load_surname_list(surname_file)
-            
-            # 名簿リストの処理
-            with st.spinner('処理中...'):
-                result_df, errors = process_name_list(
-                    df, 
-                    surname_list, 
-                    char_count
+            # 入力を行ごとにリスト化
+            names = [line.strip() for line in name_input.split("\n") if line.strip()]
+            surname_list = [
+                line.strip() for line in surname_input.split("\n") if line.strip()
+            ]
+
+            # 名前リストの処理
+            with st.spinner("処理中..."):
+                formatted_names, errors = process_name_list(
+                    names, surname_list, char_count
                 )
-            
+
             # エラーメッセージの表示
             if errors:
                 st.markdown("<div class='error-box'>", unsafe_allow_html=True)
@@ -322,29 +303,32 @@ if uploaded_file is not None and surname_file is not None:
                 for error in errors:
                     st.write(f"- {error}")
                 st.markdown("</div>", unsafe_allow_html=True)
-            
+
             # 処理結果の表示
             st.markdown("<h2 class='sub-header'>処理結果</h2>", unsafe_allow_html=True)
             st.markdown("<div class='success-box'>", unsafe_allow_html=True)
-            st.write(f"処理が完了しました。合計 {len(df)} 行を処理しました。")
+            st.write(
+                f"処理が完了しました。合計 {len(formatted_names)} 行を処理しました。"
+            )
             st.markdown("</div>", unsafe_allow_html=True)
-            
-            # 結果のプレビュー
-            st.subheader("結果プレビュー")
-            st.dataframe(result_df.head(10))
-            
-            # ダウンロードリンク
-            st.subheader("結果のダウンロード")
-            download_filename = f"整形済み_{uploaded_file.name.split('.')[0]}"
-            st.markdown(get_download_link(result_df, file_format, download_filename), unsafe_allow_html=True)
-            
+
+            # 結果の表示
+            result_text = "\n".join(formatted_names)
+            st.markdown("<h3>結果出力</h3>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div class='result-area'>{result_text}</div>", unsafe_allow_html=True
+            )
+
+            # コピー可能なテキストエリアとしても表示
+            st.text_area("結果（コピー可能）:", value=result_text, height=300)
+
         except Exception as e:
             st.error(f"エラーが発生しました: {str(e)}")
 else:
     st.markdown("<div class='info-box'>", unsafe_allow_html=True)
-    st.write("名簿リストと苗字リストをアップロードしてください。")
+    st.write("名前リストと苗字リストを入力してください。")
     st.markdown("</div>", unsafe_allow_html=True)
 
 # フッター
 st.markdown("---")
-st.markdown("© 2023 日本語DTP名寄せツール") 
+st.markdown("© 2023 日本語DTP名寄せツール")
