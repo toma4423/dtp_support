@@ -6,9 +6,6 @@
 """
 
 import streamlit as st
-import pandas as pd
-import numpy as np
-import re
 import time
 
 # 自作モジュールのインポート
@@ -161,9 +158,6 @@ def process_name_list(names, surname_list, char_count_option):
         target_length = 5
     else:  # "7字取り"
         target_length = 7
-
-    # 苗字リストをセットに変換して検索を高速化
-    surname_set = set(surname_list)
 
     # 各行の処理
     total_names = len(names)
