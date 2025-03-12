@@ -15,34 +15,6 @@ import time
 from pattern5 import format_name_5chars_rule
 from pattern7 import format_name_7chars_rule
 
-# サンプルデータ
-SAMPLE_NAMES = """佐藤太郎
-鈴木花子
-高橋一郎
-田中美咲
-渡辺健太
-伊藤さくら
-山本雄大
-中村真由美
-小林誠
-加藤裕子"""
-
-SAMPLE_SURNAMES = """佐藤
-鈴木
-高橋
-田中
-渡辺
-伊藤
-山本
-中村
-小林
-加藤
-吉田
-山田
-佐々木
-山口
-松本"""
-
 # アプリケーションのタイトルとスタイル設定
 st.set_page_config(
     page_title="日本語DTP名寄せツール",
@@ -92,11 +64,6 @@ st.markdown(
         white-space: pre;
         margin-top: 1rem;
     }
-    .button-container {
-        display: flex;
-        gap: 1rem;
-        margin-bottom: 1rem;
-    }
 </style>
 """,
     unsafe_allow_html=True,
@@ -121,7 +88,7 @@ with st.sidebar:
         st.write(
             """
         1. テキストフィールドに変換したい氏名を入力します（一行に一つの氏名）。
-        2. 苗字リストをテキストフィールドに入力します（一行に一つの苗字）。
+        2. 苗字リスト（テキストファイル）をアップロードします（一行に一つの苗字）。
         3. サイドバーで文字数整形オプション（5字取りまたは7字取り）を選択します。
         4. 「処理実行」ボタンをクリックします。
         5. 処理結果が下部のテキストエリアに表示されます。
@@ -131,11 +98,31 @@ with st.sidebar:
     with st.expander("注意事項"):
         st.write(
             """
-        - 氏名と苗字は一行に一つずつ入力してください。
+        - 氏名は一行に一つずつ入力してください。
         - 空白行は処理されません。
+        - 苗字リストは1行に1つの苗字が記載されたテキストファイルです。
         - 苗字リストに存在しない氏名は、自動的に半分で分割されます。
         """
         )
+
+
+def load_surname_list(file):
+    """
+    苗字リストを読み込む関数
+
+    Parameters:
+    -----------
+    file : UploadedFile
+        アップロードされた苗字リストファイル
+
+    Returns:
+    --------
+    list
+        苗字のリスト
+    """
+    content = file.read().decode("utf-8")
+    surnames = [line.strip() for line in content.split("\n") if line.strip()]
+    return surnames
 
 
 # メイン処理関数
@@ -251,44 +238,31 @@ def format_name(surname, given_name, target_length):
 # メイン処理部分
 st.markdown("<h2 class='sub-header'>名前入力</h2>", unsafe_allow_html=True)
 
-# サンプルデータ使用ボタン
-st.markdown("<div class='button-container'>", unsafe_allow_html=True)
-col1, col2, col3 = st.columns([1, 1, 3])
-with col1:
-    use_sample_names = st.button("サンプル氏名を使用", key="sample_names")
-with col2:
-    use_sample_surnames = st.button("サンプル苗字を使用", key="sample_surnames")
-st.markdown("</div>", unsafe_allow_html=True)
-
 # 名前リストのテキストエリア
 name_input = st.text_area(
     "変換したい氏名を入力してください（一行に一つ）:",
-    value=SAMPLE_NAMES if use_sample_names else "",
     height=200,
     help="一行に一つの氏名を入力してください。",
-    key="name_input",
 )
 
-# 苗字リストのテキストエリア
-surname_input = st.text_area(
-    "苗字リストを入力してください（一行に一つ）:",
-    value=SAMPLE_SURNAMES if use_sample_surnames else "",
-    height=200,
-    help="一行に一つの苗字を入力してください。",
-    key="surname_input",
+# 苗字リストのアップロード
+surname_file = st.file_uploader(
+    "苗字リスト（テキストファイル）をアップロードしてください",
+    type=["txt"],
+    help="一行に一つの苗字が記載されたテキストファイルをアップロードしてください。",
 )
 
 # 処理実行ボタン
-if name_input and surname_input:
+if name_input and surname_file is not None:
     st.markdown("<h2 class='sub-header'>処理実行</h2>", unsafe_allow_html=True)
 
     if st.button("処理実行", key="process_button"):
         try:
             # 入力を行ごとにリスト化
             names = [line.strip() for line in name_input.split("\n") if line.strip()]
-            surname_list = [
-                line.strip() for line in surname_input.split("\n") if line.strip()
-            ]
+
+            # 苗字リストの読み込み
+            surname_list = load_surname_list(surname_file)
 
             # 名前リストの処理
             with st.spinner("処理中..."):
@@ -326,7 +300,7 @@ if name_input and surname_input:
             st.error(f"エラーが発生しました: {str(e)}")
 else:
     st.markdown("<div class='info-box'>", unsafe_allow_html=True)
-    st.write("名前リストと苗字リストを入力してください。")
+    st.write("名前リストを入力し、苗字リストをアップロードしてください。")
     st.markdown("</div>", unsafe_allow_html=True)
 
 # フッター
