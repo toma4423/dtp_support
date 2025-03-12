@@ -144,6 +144,8 @@ def process_name_list(names, surname_list, char_count_option):
     list
         処理後の名前リスト
     list
+        処理されなかった名前のリスト
+    list
         エラーメッセージのリスト
     """
     # 進捗バーの初期化
@@ -152,6 +154,9 @@ def process_name_list(names, surname_list, char_count_option):
 
     # エラーメッセージを格納するリスト
     errors = []
+
+    # 処理されなかった名前のリスト
+    skipped_names = []
 
     # 整形された名前を格納するリスト
     formatted_names = []
@@ -186,13 +191,12 @@ def process_name_list(names, surname_list, char_count_option):
                 break
 
         if surname is None:
-            # 苗字が見つからない場合、単純に半分で分割
-            mid = len(full_name) // 2
-            surname = full_name[:mid]
-            given_name = full_name[mid:]
+            # 苗字が見つからない場合は処理しない
+            skipped_names.append(full_name)
             errors.append(
-                f"行 {i+1}: 「{full_name}」の苗字がリストにありません。自動分割しました: {surname} {given_name}"
+                f"行 {i+1}: 「{full_name}」の苗字がリストにありません。処理をスキップします。"
             )
+            continue  # 次の名前に進む
 
         # 整形処理
         formatted_name = format_name(surname, given_name, target_length)
@@ -207,7 +211,7 @@ def process_name_list(names, surname_list, char_count_option):
     progress_bar.progress(1.0)
     status_text.text("処理完了！")
 
-    return formatted_names, errors
+    return formatted_names, skipped_names, errors
 
 
 def format_name(surname, given_name, target_length):
@@ -266,7 +270,7 @@ if name_input and surname_file is not None:
 
             # 名前リストの処理
             with st.spinner("処理中..."):
-                formatted_names, errors = process_name_list(
+                formatted_names, skipped_names, errors = process_name_list(
                     names, surname_list, char_count
                 )
 
@@ -284,6 +288,8 @@ if name_input and surname_file is not None:
             st.write(
                 f"処理が完了しました。合計 {len(formatted_names)} 行を処理しました。"
             )
+            if skipped_names:
+                st.write(f"処理されなかった名前: {len(skipped_names)} 行")
             st.markdown("</div>", unsafe_allow_html=True)
 
             # 結果の表示
@@ -295,6 +301,12 @@ if name_input and surname_file is not None:
 
             # コピー可能なテキストエリアとしても表示
             st.text_area("結果（コピー可能）:", value=result_text, height=300)
+
+            # 処理されなかった名前の表示
+            if skipped_names:
+                skipped_text = "\n".join(skipped_names)
+                st.markdown("<h3>処理されなかった名前</h3>", unsafe_allow_html=True)
+                st.text_area("処理されなかった名前:", value=skipped_text, height=100)
 
         except Exception as e:
             st.error(f"エラーが発生しました: {str(e)}")
