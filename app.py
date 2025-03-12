@@ -145,15 +145,10 @@ def process_name_list(names, surname_list, char_count_option):
         処理後の名前リスト
     list
         処理されなかった名前のリスト
-    list
-        エラーメッセージのリスト
     """
     # 進捗バーの初期化
     progress_bar = st.progress(0)
     status_text = st.empty()
-
-    # エラーメッセージを格納するリスト
-    errors = []
 
     # 処理されなかった名前のリスト
     skipped_names = []
@@ -193,9 +188,6 @@ def process_name_list(names, surname_list, char_count_option):
         if surname is None:
             # 苗字が見つからない場合は処理しない
             skipped_names.append(full_name)
-            errors.append(
-                f"行 {i+1}: 「{full_name}」の苗字がリストにありません。処理をスキップします。"
-            )
             continue  # 次の名前に進む
 
         # 整形処理
@@ -211,7 +203,7 @@ def process_name_list(names, surname_list, char_count_option):
     progress_bar.progress(1.0)
     status_text.text("処理完了！")
 
-    return formatted_names, skipped_names, errors
+    return formatted_names, skipped_names
 
 
 def format_name(surname, given_name, target_length):
@@ -270,17 +262,9 @@ if name_input and surname_file is not None:
 
             # 名前リストの処理
             with st.spinner("処理中..."):
-                formatted_names, skipped_names, errors = process_name_list(
+                formatted_names, skipped_names = process_name_list(
                     names, surname_list, char_count
                 )
-
-            # エラーメッセージの表示
-            if errors:
-                st.markdown("<div class='error-box'>", unsafe_allow_html=True)
-                st.subheader("処理中に以下のエラーが発生しました:")
-                for error in errors:
-                    st.write(f"- {error}")
-                st.markdown("</div>", unsafe_allow_html=True)
 
             # 処理結果の表示
             st.markdown("<h2 class='sub-header'>処理結果</h2>", unsafe_allow_html=True)
@@ -292,14 +276,9 @@ if name_input and surname_file is not None:
                 st.write(f"処理されなかった名前: {len(skipped_names)} 行")
             st.markdown("</div>", unsafe_allow_html=True)
 
-            # 結果の表示
+            # 結果の表示（コピー可能なテキストエリアのみ残す）
             result_text = "\n".join(formatted_names)
-            st.markdown("<h3>結果出力</h3>", unsafe_allow_html=True)
-            st.markdown(
-                f"<div class='result-area'>{result_text}</div>", unsafe_allow_html=True
-            )
-
-            # コピー可能なテキストエリアとしても表示
+            st.subheader("結果")
             st.text_area("結果（コピー可能）:", value=result_text, height=300)
 
             # 処理されなかった名前の表示
