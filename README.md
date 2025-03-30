@@ -1,8 +1,13 @@
-# 日本語DTP名寄せツール
+# 日本語DTP字取りツール
 
 ## 概要
 
 このアプリケーションは、名簿リスト（CSV, Excel）に含まれる日本語氏名を、指定された文字数（5字または7字）で整形し、DTP処理に適した形式で出力するStreamlitアプリケーションです。
+
+## アクセス
+
+以下のURLからアプリケーションにアクセスできます。
+[https://toma4423-dtp-support-app-y69c0d.streamlit.app/](https://toma4423-dtp-support-app-y69c0d.streamlit.app/)
 
 ## 機能
 
@@ -17,7 +22,7 @@
 
 1. リポジトリをクローン
 ```bash
-git clone https://github.com/yourusername/dtp_support.git
+git clone https://github.com/toma4423/dtp_support.git
 cd dtp_support
 ```
 
@@ -65,6 +70,7 @@ streamlit run app.py
 田中
 渡辺
 ```
+**※ リポジトリ内には、サンプルとして `苗字リスト.txt` が含まれています。**
 
 ## 注意事項
 

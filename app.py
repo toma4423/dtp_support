@@ -1,5 +1,5 @@
 """
-日本語DTP名寄せツール
+日本語DTP字取りツール
 
 このアプリケーションは、テキストフィールドに入力された日本語氏名を、
 指定された文字数（5字または7字）で整形し、DTP処理に適した形式で出力します。
@@ -14,7 +14,7 @@ from pattern7 import format_name_7chars_rule
 
 # アプリケーションのタイトルとスタイル設定
 st.set_page_config(
-    page_title="日本語DTP名寄せツール",
+    page_title="日本語DTP字取りツール",
     page_icon="📝",
     layout="wide",
 )
@@ -68,7 +68,7 @@ st.markdown(
 
 # メインヘッダー
 st.markdown(
-    "<h1 class='main-header'>日本語DTP名寄せツール</h1>", unsafe_allow_html=True
+    "<h1 class='main-header'>日本語DTP字取りツール</h1>", unsafe_allow_html=True
 )
 
 # サイドバーの設定
@@ -241,7 +241,7 @@ name_input = st.text_area(
 surname_file = st.file_uploader(
     "苗字リスト（テキストファイル）をアップロードしてください",
     type=["txt"],
-    help="一行に一つの苗字が記載されたテキストファイルをアップロードしてください。",
+    help="一行に一つの苗字が記載されたテキストファイルをアップロードしてください。サンプルは[こちら](https://github.com/toma4423/dtp_support/blob/main/%E8%8B%97%E5%AD%97%E3%83%AA%E3%82%B9%E3%83%88.txt)からダウンロードできます。",
 )
 
 # 処理実行ボタン
@@ -295,4 +295,4 @@ else:
 
 # フッター
 st.markdown("---")
-st.markdown("© 2023 日本語DTP名寄せツール")
+st.markdown("© 2025 日本語DTP字取りツール")

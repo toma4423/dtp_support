@@ -49,4 +49,7 @@ Thumbs.db
 local.properties
 .settings/
 .loadpath
-.recommenders 
+.recommenders
+
+# Documentation directory (development notes)
+docs/ 
