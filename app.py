@@ -176,7 +176,7 @@ def split_name_smart(
     return None, None
 
 
-def process_names(names: List[str], surname_list: List[str], target_length: int):
+def process_names(names: List[str], surname_list: List[str], target_length: int, use_multiline: bool = False):
     """名前リストを処理する"""
     surname_set = set(surname_list)
     max_surname_len = max(len(s) for s in surname_list) if surname_list else 0
@@ -192,18 +192,61 @@ def process_names(names: List[str], surname_list: List[str], target_length: int)
         if not full_name:
             continue
 
-        surname, given_name = split_name_smart(full_name, surname_set, max_surname_len)
+        # 改行位置の保存とクリーンアップ
+        original_name = full_name
+        if use_multiline and "\n" in full_name:
+            # 各文字の直後に改行があるかどうかのフラグを作成
+            # 文字単位で処理するためにリストにする
+            chars = []
+            newlines_after = [] # 各文字のインデックスの後に改行がいくつあるか
+            
+            current_newlines = 0
+            for char in full_name:
+                if char == "\n":
+                    if chars:
+                        newlines_after[-1] += 1
+                    else:
+                        # 先頭に改行がある場合
+                        current_newlines += 1
+                else:
+                    chars.append(char)
+                    newlines_after.append(0)
+            
+            clean_name = "".join(chars)
+            prefix_newlines = "\n" * current_newlines
+        else:
+            clean_name = full_name
+            prefix_newlines = ""
+            newlines_after = []
+
+        surname, given_name = split_name_smart(clean_name, surname_set, max_surname_len)
 
         if surname is None:
-            skipped_names.append((i + 1, full_name))
-            formatted_names.append(full_name)
+            skipped_names.append((i + 1, original_name))
+            formatted_names.append(original_name)
         else:
             fmt_func = (
                 format_name_5chars_rule
                 if target_length == 5
                 else format_name_7chars_rule
             )
-            formatted_names.append(fmt_func(surname, given_name))
+            formatted = fmt_func(surname, given_name)
+            
+            # 改行の再挿入
+            if use_multiline and newlines_after:
+                res = prefix_newlines
+                char_idx = 0
+                for char in formatted:
+                    res += char
+                    # 空白以外の文字（元の名前に含まれていた文字）の場合、
+                    # 元の文字列でその文字の後にあった改行を挿入
+                    if char != "　" and char != " ":
+                        if char_idx < len(newlines_after):
+                            res += "\n" * newlines_after[char_idx]
+                            char_idx += 1
+                formatted = res
+                
+            formatted_names.append(formatted)
 
         if (i + 1) % 10 == 0 or (i + 1) == total:
             progress_bar.progress((i + 1) / total)
@@ -226,6 +269,9 @@ def main():
         st.header("⚙️ 設定")
         char_option = st.radio("目標文字数を選択:", ["5字取り", "7字取り"], index=0)
         target_len = 5 if char_option == "5字取り" else 7
+        
+        st.divider()
+        use_multiline = st.checkbox("改行が含まれる文字列を使用する", value=False, help="セル内に改行が含まれる場合、改行位置を維持したまま整形します。")
 
         st.divider()
         st.subheader("💡 使い方")
@@ -302,7 +348,7 @@ def main():
                 # 処理
                 with st.spinner("変換中..."):
                     formatted, skipped = process_names(
-                        name_list, surname_list, target_len
+                        name_list, surname_list, target_len, use_multiline
                     )
 
                 st.success(f"完了! (全 {len(formatted)} 件)")
