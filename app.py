@@ -34,21 +34,22 @@ def init_page():
     <style>
         /* メイン背景とフォント */
         .stApp {
-            background-color: #f8fafc;
+            background-color: var(--background-color);
         }
         
         /* ヘッダー */
         .main-header {
             font-size: 2.8rem;
             font-weight: 800;
-            color: #1e293b;
+            color: var(--text-color);
             text-align: center;
             margin-bottom: 0.5rem;
             letter-spacing: -0.025em;
         }
         .main-subheader {
             font-size: 1.1rem;
-            color: #64748b;
+            color: var(--text-color);
+            opacity: 0.7;
             text-align: center;
             margin-bottom: 3rem;
         }
@@ -57,7 +58,7 @@ def init_page():
         .sub-header {
             font-size: 1.4rem;
             font-weight: 700;
-            color: #334155;
+            color: var(--text-color);
             margin-top: 2.5rem;
             margin-bottom: 1.2rem;
             padding-left: 0.8rem;
@@ -66,10 +67,10 @@ def init_page():
         
         /* カード風のボックス */
         .custom-card {
-            background-color: white;
+            background-color: var(--secondary-background-color);
             padding: 1.5rem;
             border-radius: 0.8rem;
-            border: 1px solid #e2e8f0;
+            border: 1px solid rgba(128, 128, 128, 0.2);
             box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
             margin-bottom: 1.5rem;
         }
@@ -83,7 +84,7 @@ def init_page():
         .result-label {
             font-weight: 600;
             margin-bottom: 0.5rem;
-            color: #475569;
+            color: var(--text-color);
         }
         
         /* フッター */
@@ -91,9 +92,10 @@ def init_page():
             text-align: center;
             margin-top: 5rem;
             padding: 2rem;
-            color: #94a3b8;
+            color: var(--text-color);
+            opacity: 0.5;
             font-size: 0.9rem;
-            border-top: 1px solid #e2e8f0;
+            border-top: 1px solid rgba(128, 128, 128, 0.2);
         }
 
         /* アニメーション用JSのトリガー（ダミー） */
