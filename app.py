@@ -188,13 +188,14 @@ def process_names(names: List[str], surname_list: List[str], target_length: int,
     total = len(names)
 
     for i, full_name in enumerate(names):
-        full_name = str(full_name).strip()
-        if not full_name:
+        full_name_str = str(full_name).strip()
+        if not full_name_str:
+            formatted_names.append("")
             continue
 
         # 改行位置の保存とクリーンアップ
-        original_name = full_name
-        if use_multiline and "\n" in full_name:
+        original_name = str(full_name)
+        if use_multiline and "\n" in original_name:
             # 各文字の直後に改行があるかどうかのフラグを作成
             # 文字単位で処理するためにリストにする
             chars = []
@@ -292,7 +293,7 @@ def main():
             placeholder="田中太郎\n佐藤二朗",
         )
         if name_input:
-            name_list = [line.strip() for line in name_input.splitlines() if line.strip()]
+            name_list = [line.strip() for line in name_input.splitlines()]
     else:
         uploaded_data = st.file_uploader(
             "ファイルをアップロード", type=["csv", "xlsx", "xls"]
