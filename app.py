@@ -76,32 +76,49 @@ st.markdown(
 
 # --- 共通関数 ---
 
-def load_surname_list(uploaded_file=None):
+@st.cache_data
+def load_default_surname_list():
     """
-    苗字リストを読み込む関数
+    デフォルトの苗字リストを読み込む
     """
-    content = ""
-    # アップロードされたファイルがある場合はそれを優先
-    if uploaded_file is not None:
-        try:
-            content = uploaded_file.getvalue().decode("utf-8")
-        except UnicodeDecodeError:
-            try:
-                content = uploaded_file.getvalue().decode("shift-jis")
-            except Exception as e:
-                st.error(f"苗字リストの読み込みに失敗しました（UTF-8/Shift-JIS）: {e}")
-                return []
-    # ない場合はデフォルトのファイルを読み込む
-    elif os.path.exists("苗字リスト.txt"):
-        try:
-            with open("苗字リスト.txt", "r", encoding="utf-8") as f:
-                content = f.read()
-        except Exception as e:
-            st.warning(f"デフォルトの苗字リストの読み込みに失敗しました: {e}")
+    filename = "surnames.txt"
+    if not os.path.exists(filename):
+        # バックアップとして元のファイル名も確認
+        if os.path.exists("苗字リスト.txt"):
+            filename = "苗字リスト.txt"
+        else:
             return []
-    
+            
+    try:
+        with open(filename, "r", encoding="utf-8") as f:
+            content = f.read()
+    except UnicodeDecodeError:
+        try:
+            with open(filename, "r", encoding="shift-jis") as f:
+                content = f.read()
+        except:
+            return []
+    except:
+        return []
+        
     surnames = [line.strip() for line in content.split("\n") if line.strip()]
-    # 苗字リストを長い順にソート（最長一致を優先するため）
+    surnames.sort(key=len, reverse=True)
+    return surnames
+
+def load_custom_surname_list(uploaded_file):
+    """
+    アップロードされた苗字リストを読み込む
+    """
+    try:
+        content = uploaded_file.getvalue().decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            content = uploaded_file.getvalue().decode("shift-jis")
+        except Exception as e:
+            st.error(f"苗字リストの読み込みに失敗しました: {e}")
+            return []
+            
+    surnames = [line.strip() for line in content.split("\n") if line.strip()]
     surnames.sort(key=len, reverse=True)
     return surnames
 
@@ -150,15 +167,12 @@ def process_names(names, surname_list, char_count_option):
         surname, given_name = split_name_smart(full_name, surname_set, max_surname_len)
         
         if surname is None:
-            # 苗字が見つからない場合
             skipped_names.append((i + 1, full_name))
             formatted_names.append(full_name)
         else:
-            # 整形処理
             formatted_name = format_name(surname, given_name, target_length)
             formatted_names.append(formatted_name)
             
-        # 進捗更新
         if (i + 1) % 10 == 0 or (i + 1) == total_names:
             progress_bar.progress((i + 1) / total_names)
             
@@ -225,7 +239,6 @@ with col1:
         if uploaded_data:
             try:
                 if uploaded_data.name.endswith(".csv"):
-                    # 文字コードを自動判定して読み込み
                     try:
                         df = pd.read_csv(uploaded_data, encoding="utf-8")
                     except UnicodeDecodeError:
@@ -236,7 +249,6 @@ with col1:
                 st.write("読み込まれたデータ (プレビュー):")
                 st.dataframe(df.head(), use_container_width=True)
                 
-                # 列の選択
                 target_col = st.selectbox("氏名が含まれる列を選択してください:", df.columns)
                 if target_col:
                     name_list = df[target_col].dropna().astype(str).tolist()
@@ -252,14 +264,15 @@ with col2:
         st.info("左側のパネルで氏名を入力してください。")
     else:
         if st.button("🚀 処理実行", use_container_width=True):
-            # 苗字リストの読み込み
             with st.spinner("苗字リストを準備中..."):
-                surname_list = load_surname_list(custom_surname_file)
+                if custom_surname_file is not None:
+                    surname_list = load_custom_surname_list(custom_surname_file)
+                else:
+                    surname_list = load_default_surname_list()
             
             if not surname_list:
                 st.error("苗字リストが読み込めませんでした。")
             else:
-                # 処理
                 with st.spinner("整形処理を実行中..."):
                     formatted_names, skipped_names = process_names(
                         name_list, surname_list, char_count
@@ -267,11 +280,9 @@ with col2:
                 
                 st.success("処理が完了しました！")
                 
-                # 結果表示
                 result_text = "\n".join(formatted_names)
                 st.text_area("整形結果 (コピー用):", value=result_text, height=300)
                 
-                # ダウンロードボタン
                 st.download_button(
                     label="📥 結果をダウンロード (.txt)",
                     data=result_text,
@@ -280,7 +291,6 @@ with col2:
                     use_container_width=True
                 )
                 
-                # 処理されなかった名前
                 if skipped_names:
                     with st.expander(f"⚠️ 処理されなかった名前 ({len(skipped_names)}件)"):
                         st.write("苗字リストに存在しなかったため分割できなかった氏名です。")
