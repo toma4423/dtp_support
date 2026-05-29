@@ -10,14 +10,14 @@ from typing import List, Optional, Set, Tuple
 
 import pandas as pd
 import streamlit as st
+from sudachipy import dictionary, tokenizer
 
 # 自作モジュールのインポート
 from pattern5 import format_name_5chars_rule
 from pattern7 import format_name_7chars_rule
 
 # --- 定数 ---
-DEFAULT_SURNAME_FILE = "surnames.txt"
-BACKUP_SURNAME_FILE = "苗字リスト.txt"
+# デフォルトの苗字リスト（surnames.txt）は廃止し、Sudachiによる形態素解析に移行しました。
 
 
 def init_page():
@@ -118,33 +118,10 @@ def init_page():
     )
 
 
-@st.cache_data
-def load_default_surname_list() -> List[str]:
-    """デフォルトの苗字リストを読み込む"""
-    filename = (
-        DEFAULT_SURNAME_FILE
-        if os.path.exists(DEFAULT_SURNAME_FILE)
-        else BACKUP_SURNAME_FILE
-    )
-
-    if not os.path.exists(filename):
-        return []
-
-    try:
-        # UTF-8, Shift-JIS, CP932を順に試す
-        for enc in ["utf-8", "shift-jis", "cp932"]:
-            try:
-                with open(filename, encoding=enc) as f:
-                    surnames = [line.strip() for line in f if line.strip()]
-                if surnames:
-                    # 長い順にソートして最長一致を実現
-                    surnames.sort(key=len, reverse=True)
-                    return surnames
-            except UnicodeDecodeError:
-                continue
-    except Exception:
-        pass
-    return []
+@st.cache_resource
+def get_sudachi_tokenizer():
+    """Sudachiのトークナイザーをキャッシュして取得"""
+    return dictionary.Dictionary().create()
 
 
 def load_custom_surname_list(uploaded_file) -> List[str]:
@@ -165,10 +142,10 @@ def load_custom_surname_list(uploaded_file) -> List[str]:
     return []
 
 
-def split_name_smart(
+def split_name_from_list(
     full_name: str, surname_set: Set[str], max_surname_len: int
 ) -> Tuple[Optional[str], Optional[str]]:
-    """最長一致で苗字と名前に分割する"""
+    """リストに基づき最長一致で苗字と名前に分割する"""
     for length in range(min(len(full_name), max_surname_len), 0, -1):
         potential_surname = full_name[:length]
         if potential_surname in surname_set:
@@ -176,10 +153,31 @@ def split_name_smart(
     return None, None
 
 
-def process_names(names: List[str], surname_list: List[str], target_length: int, use_multiline: bool = False):
+def split_name_sudachi(full_name: str) -> Tuple[Optional[str], Optional[str]]:
+    """Sudachiを使用して苗字と名前に分割する"""
+    # 全角・半角スペースを除去してトークナイズ
+    clean_name = full_name.replace(" ", "").replace("　", "")
+    if not clean_name:
+        return None, None
+
+    tk = get_sudachi_tokenizer()
+    mode = tokenizer.Tokenizer.SplitMode.C
+    tokens = tk.tokenize(clean_name, mode)
+
+    if len(tokens) < 2:
+        return None, None
+
+    # 最初のトークンを苗字、残りを名前とする
+    surname = tokens[0].surface()
+    given_name = "".join([m.surface() for m in tokens[1:]])
+
+    return surname, given_name
+
+
+def process_names(names: List[str], custom_surname_list: List[str], target_length: int, use_multiline: bool = False):
     """名前リストを処理する"""
-    surname_set = set(surname_list)
-    max_surname_len = max(len(s) for s in surname_list) if surname_list else 0
+    custom_surname_set = set(custom_surname_list) if custom_surname_list else set()
+    max_custom_surname_len = max(len(s) for s in custom_surname_list) if custom_surname_list else 0
 
     formatted_names = []
     skipped_names = []
@@ -220,7 +218,17 @@ def process_names(names: List[str], surname_list: List[str], target_length: int,
             prefix_newlines = ""
             newlines_after = []
 
-        surname, given_name = split_name_smart(clean_name, surname_set, max_surname_len)
+        # 苗字と名前の分割
+        surname = None
+        given_name = None
+
+        # 1. カスタム苗字リストがある場合は最優先で試行
+        if custom_surname_set:
+            surname, given_name = split_name_from_list(clean_name, custom_surname_set, max_custom_surname_len)
+
+        # 2. カスタムリストで見つからない、または無い場合はSudachiで分割
+        if surname is None:
+            surname, given_name = split_name_sudachi(clean_name)
 
         if surname is None:
             skipped_names.append((i + 1, original_name))
@@ -324,7 +332,7 @@ def main():
                 st.error(f"エラー: {e}")
 
     st.markdown('<h2 class="sub-header">2. 苗字リストの設定</h2>', unsafe_allow_html=True)
-    st.write("デフォルトで約2.5万件のリストを使用します。独自のリストが必要な場合のみアップロードしてください。")
+    st.write("形態素解析（SudachiPy）により苗字を自動判定します。特定の分割が必要な場合のみ、苗字リストをアップロードしてください。")
     custom_surname_file = st.file_uploader(
         "カスタム苗字リスト (任意)", type=["txt"], key="custom_surnames"
     )
@@ -338,43 +346,40 @@ def main():
         if st.button("🚀 処理を実行する", use_container_width=True, type="primary"):
             # 苗字リスト準備
             with st.spinner("準備中..."):
+                custom_surname_list = []
                 if custom_surname_file:
-                    surname_list = load_custom_surname_list(custom_surname_file)
-                else:
-                    surname_list = load_default_surname_list()
+                    custom_surname_list = load_custom_surname_list(custom_surname_file)
 
-            if not surname_list:
-                st.error("苗字リストを読み込めませんでした。")
-            else:
-                # 処理
-                with st.spinner("変換中..."):
-                    formatted, skipped = process_names(
-                        name_list, surname_list, target_len, use_multiline
-                    )
-
-                st.success(f"完了! (全 {len(formatted)} 件)")
-
-                # 結果表示
-                res_text = "\n".join(formatted)
-                st.markdown('<p class="result-label">整形結果:</p>', unsafe_allow_html=True)
-                st.text_area("result", value=res_text, height=300, label_visibility="collapsed")
-
-                st.download_button(
-                    "📥 結果をダウンロード (.txt)",
-                    data=res_text,
-                    file_name="formatted_names.txt",
-                    mime="text/plain",
-                    use_container_width=True,
+            # 処理
+            with st.spinner("変換中..."):
+                formatted, skipped = process_names(
+                    name_list, custom_surname_list, target_len, use_multiline
                 )
 
-                if skipped:
-                    with st.expander(f"⚠️ 判定できなかった名前 ({len(skipped)}件)"):
-                        for line_no, name in skipped:
-                            st.write(f"- {line_no}行目: {name}")
+            st.success(f"完了! (全 {len(formatted)} 件)")
+
+            # 結果表示
+            res_text = "\n".join(formatted)
+            st.markdown('<p class="result-label">整形結果:</p>', unsafe_allow_html=True)
+            st.text_area("result", value=res_text, height=300, label_visibility="collapsed")
+
+            st.download_button(
+                "📥 結果をダウンロード (.txt)",
+                data=res_text,
+                file_name="formatted_names.txt",
+                mime="text/plain",
+                use_container_width=True,
+            )
+
+            if skipped:
+                with st.expander(f"⚠️ 判定できなかった名前 ({len(skipped)}件)"):
+                    st.write("※Sudachiで自動分割できなかった名前です。カスタム苗字リストで指定することを検討してください。")
+                    for line_no, name in skipped:
+                        st.write(f"- {line_no}行目: {name}")
 
     # フッター
     st.markdown(
-        '<div class="footer">© 2025 日本語DTP字取りツール | Modernized DTP Utility</div>',
+        '<div class="footer">© 2025 日本語DTP字取りツール | Modernized with SudachiPy</div>',
         unsafe_allow_html=True,
     )
 
